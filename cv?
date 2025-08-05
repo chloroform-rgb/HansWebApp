@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teachable Machine Image Classifier</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: white;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #fff, #f0f0ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.8;
+            margin-bottom: 30px;
+        }
+
+        .start-btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+            margin-bottom: 30px;
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
+        }
+
+        .start-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .webcam-container {
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .webcam-container canvas {
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            max-width: 100%;
+            height: auto;
+        }
+
+        .predictions {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            backdrop-filter: blur(5px);
+        }
+
+        .prediction-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            margin: 8px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .prediction-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(5px);
+        }
+
+        .prediction-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .prediction-confidence {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            min-width: 60px;
+        }
+
+        .prediction-confidence.high {
+            background: linear-gradient(45deg, #2ecc71, #27ae60);
+        }
+
+        .prediction-confidence.medium {
+            background: linear-gradient(45deg, #f39c12, #e67e22);
+        }
+
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Hans' CV Web App (Image classifier)</h1>
+        <p class="subtitle">Click start to begin real-time image recognition</p>
+        
+        <button type="button" class="start-btn" onclick="init()" id="startBtn">
+            🚀 Start Camera
+        </button>
+        
+        <div id="loading" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Loading AI model...</p>
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div id="webcam-container" class="webcam-container"></div>
+        
+        <div id="predictions" class="predictions" style="display: none;">
+            <h3>🔍 Predictions</h3>
+            <div id="label-container"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <script type="text/javascript">
+        const URL = "https://teachablemachine.withgoogle.com/models/SI7cZ6qiL/";
+        let model, webcam, labelContainer, maxPredictions;
+        let isRunning = false;
+
+        // Wait for libraries to load
+        function waitForLibraries() {
+            return new Promise((resolve, reject) => {
+                let attempts = 0;
+                const maxAttempts = 50;
+                
+                const checkLibraries = () => {
+                    attempts++;
+                    if (typeof tf !== 'undefined' && typeof tmImage !== 'undefined') {
+                        resolve();
+                    } else if (attempts >= maxAttempts) {
+                        reject(new Error('Libraries failed to load. Please refresh the page.'));
+                    } else {
+                        setTimeout(checkLibraries, 100);
+                    }
+                };
+                
+                checkLibraries();
+            });
+        }
+
+        async function init() {
+            const startBtn = document.getElementById('startBtn');
+            const loading = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const predictionsDiv = document.getElementById('predictions');
+
+            if (isRunning) {
+                stopCamera();
+                return;
+            }
+
+            try {
+                // Show loading state
+                startBtn.disabled = true;
+                startBtn.textContent = '⏳ Loading...';
+                loading.style.display = 'flex';
+                errorDiv.style.display = 'none';
+
+                // Wait for libraries to load
+                await waitForLibraries();
+
+                // Load the model
+                const modelURL = URL + "model.json";
+                const metadataURL = URL + "metadata.json";
+
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+
+                // Setup webcam
+                const flip = true;
+                webcam = new tmImage.Webcam(300, 300, flip);
+                await webcam.setup();
+                await webcam.play();
+
+                // Update UI
+                loading.style.display = 'none';
+                startBtn.textContent = '⏹️ Stop Camera';
+                startBtn.disabled = false;
+                isRunning = true;
+
+                // Add webcam to DOM
+                const webcamContainer = document.getElementById("webcam-container");
+                webcamContainer.innerHTML = '';
+                webcamContainer.appendChild(webcam.canvas);
+
+                // Setup prediction display
+                labelContainer = document.getElementById("label-container");
+                labelContainer.innerHTML = '';
+                for (let i = 0; i < maxPredictions; i++) {
+                    const predictionDiv = document.createElement("div");
+                    predictionDiv.className = "prediction-item";
+                    labelContainer.appendChild(predictionDiv);
+                }
+
+                predictionsDiv.style.display = 'block';
+
+                // Start prediction loop
+                window.requestAnimationFrame(loop);
+
+            } catch (error) {
+                console.error('Error initializing:', error);
+                loading.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = `Error: ${error.message}. Please check your camera permissions and internet connection.`;
+                startBtn.textContent = '🚀 Start Camera';
+                startBtn.disabled = false;
+            }
+        }
+
+        function stopCamera() {
+            if (webcam) {
+                webcam.stop();
+            }
+            
+            document.getElementById('webcam-container').innerHTML = '';
+            document.getElementById('predictions').style.display = 'none';
+            document.getElementById('startBtn').textContent = '🚀 Start Camera';
+            isRunning = false;
+        }
+
+        async function loop() {
+            if (!isRunning) return;
+            
+            webcam.update();
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        async function predict() {
+            try {
+                const prediction = await model.predict(webcam.canvas);
+                
+                // Sort predictions by confidence
+                const sortedPredictions = prediction.sort((a, b) => b.probability - a.probability);
+                
+                for (let i = 0; i < maxPredictions; i++) {
+                    const pred = sortedPredictions[i];
+                    const confidence = Math.round(pred.probability * 100);
+                    
+                    let confidenceClass = 'low';
+                    if (confidence > 70) confidenceClass = 'high';
+                    else if (confidence > 40) confidenceClass = 'medium';
+                    
+                    labelContainer.childNodes[i].innerHTML = `
+                        <span class="prediction-name">${pred.className}</span>
+                        <span class="prediction-confidence ${confidenceClass}">${confidence}%</span>
+                    `;
+                }
+            } catch (error) {
+                console.error('Prediction error:', error);
+            }
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', function() {
+            // Pre-load libraries check
+            setTimeout(() => {
+                if (typeof tmImage === 'undefined') {
+                    const errorDiv = document.getElementById('error');
+                    errorDiv.style.display = 'block';
+                    errorDiv.innerHTML = `
+                        <strong>Library Loading Error</strong><br>
+                        The Teachable Machine library failed to load. This might be due to:<br>
+                        • Network connectivity issues<br>
+                        • CDN server problems<br>
+                        • Browser blocking external scripts<br><br>
+                        <strong>Solutions:</strong><br>
+                        • Refresh the page<br>
+                        • Check your internet connection<br>
+                        • Try a different browser
+                    `;
+                }
+            }, 3000);
+        });
+
+        // Handle beforeunload to cleanup
+        window.addEventListener('beforeunload', function() {
+            if (webcam) {
+                webcam.stop();
+            }
+        });
+    </script>
+</body>
+</html>
+
+
